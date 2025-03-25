@@ -47,6 +47,7 @@ struct Bang {
 };
 
 extern absl::flat_hash_map<std::string_view, std::string_view> BANG_URLS;
+extern absl::flat_hash_map<std::string_view, std::string> BANG_DOMAINS;
 extern std::vector<Bang> ALL_BANGS;
 extern const std::unordered_map<std::string_view, Category> CATEGORY_MAP;
 

@@ -8,6 +8,7 @@
 #include <cstring>
 
 absl::flat_hash_map<std::string_view, std::string_view> BANG_URLS = {};
+absl::flat_hash_map<std::string_view, std::string> BANG_DOMAINS = {};
 std::vector<Bang> ALL_BANGS;
 
 const std::unordered_map<std::string_view, Category> CATEGORY_MAP = {
@@ -195,6 +196,16 @@ bool loadBangDataFromUrl(const std::string &url) {
             );
 
             BANG_URLS[ALL_BANGS.back().trigger] = ALL_BANGS.back().url_template;
+
+            if (domain) {
+                if (const auto& bang = ALL_BANGS.back(); bang.domain) {
+                    std::string domainView = *bang.domain;
+                    if (!domainView.starts_with("http")) {
+                        domainView.insert(0, "https://");
+                    }
+                    BANG_DOMAINS[bang.trigger] = std::move(domainView);
+                }
+            }
         }
 
         std::cout << "Loaded " << ALL_BANGS.size() << " bang commands" << std::endl;

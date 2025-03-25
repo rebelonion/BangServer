@@ -335,7 +335,10 @@ std::pair<std::string_view, std::string_view> processQuery(
                     return {searchUrl, std::string_view(encodeOutputBuffer, encodedLen)};
                 }
 
-                // No text after bang
+                // No text after bang - check if we have a domain for this bang
+                if (const auto domainIt = BANG_DOMAINS.find(bangCmd); domainIt != BANG_DOMAINS.end()) {
+                    return {domainIt->second, std::string_view()};
+                }
                 return {searchUrl, std::string_view()};
             }
         }
@@ -395,6 +398,9 @@ std::pair<std::string_view, std::string_view> processQuery(
     }
 
     if (stitchedQueryLen == 0) {
+        if (const auto domainIt = BANG_DOMAINS.find(bestMatch.bangCmd); domainIt != BANG_DOMAINS.end()) {
+            return {domainIt->second, std::string_view()};
+        }
         return {searchUrl, std::string_view()};
     }
 
