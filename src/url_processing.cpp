@@ -182,44 +182,82 @@ size_t urlEncode(const std::string_view str, char *buffer) {
     return dest;
 }
 
-size_t findBangPositions(const char *buffer, const size_t length, size_t *positions, const size_t maxPositions) {
-    size_t count = 0;
-
+size_t findFirstValidBangPosition(const char *buffer, const size_t length) {
     const char *ptr = buffer;
     const char *end = buffer + length;
 
+    while (ptr < end) {
+        size_t foundPos = SIZE_MAX;
+
 #ifdef __x86_64__
-    if (length >= 16) {
-        const __m128i bang_mask = _mm_set1_epi8('!');
+        if (ptr + 16 <= end) {
+            const __m128i bang_mask = _mm_set1_epi8('!');
+            const char *simd_start = ptr;
 
-        while (ptr + 16 <= end && count < maxPositions) {
-            const __m128i chunk = (reinterpret_cast<uintptr_t>(ptr) & 0xF) == 0
-                                      ? _mm_load_si128(reinterpret_cast<const __m128i *>(ptr))
-                                      : _mm_loadu_si128(reinterpret_cast<const __m128i *>(ptr));
+            while (ptr + 16 <= end) {
+                const __m128i chunk = (reinterpret_cast<uintptr_t>(ptr) & 0xF) == 0
+                                          ? _mm_load_si128(reinterpret_cast<const __m128i *>(ptr))
+                                          : _mm_loadu_si128(reinterpret_cast<const __m128i *>(ptr));
 
-            const __m128i matches = _mm_cmpeq_epi8(chunk, bang_mask);
+                const __m128i matches = _mm_cmpeq_epi8(chunk, bang_mask);
 
-            if (const uint16_t mask = _mm_movemask_epi8(matches); mask != 0) {
-                for (int i = 0; i < 16 && count < maxPositions; ++i) {
-                    if (mask & (1 << i)) {
-                        positions[count++] = ptr - buffer + i;
-                    }
+                if (const uint16_t mask = _mm_movemask_epi8(matches); mask != 0) {
+                    const int pos = __builtin_ctz(mask); // Count trailing zeros to find first match
+                    foundPos = (ptr - buffer) + pos;
+                    ptr = buffer + foundPos;
+                    break;
                 }
+
+                ptr += 16;
             }
 
-            ptr += 16;
+            // If no match found via SIMD, reset ptr
+            if (foundPos == SIZE_MAX) {
+                ptr = simd_start + (ptr - simd_start);
+            }
         }
-    }
 #endif
 
-    while (ptr < end && count < maxPositions) {
-        if (*ptr == '!') {
-            positions[count++] = ptr - buffer;
+        // If no SIMD match or not using SIMD
+        if (foundPos == SIZE_MAX) {
+            ptr = static_cast<const char *>(memchr(ptr, '!', end - ptr));
+            if (!ptr) break;
+
+            foundPos = ptr - buffer;
         }
-        ++ptr;
+
+        // 1. At start of string or preceded by whitespace
+        if (foundPos > 0 && buffer[foundPos - 1] != ' ') {
+            ptr++;
+            continue;
+        }
+
+        // 2. Not at the end of the string
+        if (foundPos + 1 >= length) {
+            ptr++;
+            continue;
+        }
+
+        // 3. Find end of bang command (next space or end of string)
+        const auto bang_end = static_cast<const char *>(memchr(buffer + foundPos, ' ', length - foundPos));
+        const size_t bangEndPos = bang_end ? bang_end - (buffer + foundPos) : length - foundPos;
+
+        // 4. Bang command should be at least 2 chars (! + something)
+        if (bangEndPos < 2) {
+            ptr++;
+            continue;
+        }
+
+        // 5. Check if this is a known bang command in the BANG_URLS map
+        const std::string_view bangCmd(buffer + foundPos, bangEndPos);
+        if (const auto it = BANG_URLS.find(bangCmd); it != BANG_URLS.end()) {
+            return foundPos;
+        }
+
+        ptr++;
     }
 
-    return count;
+    return SIZE_MAX;
 }
 
 struct BangMatch {
@@ -303,38 +341,19 @@ std::pair<std::string_view, std::string_view> processQuery(
         }
     }
 
-    if (memchr(decodeOutputBuffer + 1, '!', rawQueryLen - 1) == nullptr) {
-        // No '!' found except possibly at position 0, which we already checked
-        const size_t encodedLen = urlEncode(std::string_view(decodeOutputBuffer, rawQueryLen), encodeOutputBuffer);
-        return {DEFAULT_SEARCH_URL, std::string_view(encodeOutputBuffer, encodedLen)};
-    }
-
-    // Look for the first valid bang command anywhere in the query
     BangMatch bestMatch;
-    const char *ptr = decodeOutputBuffer + 1; // Start after position 0 (which we already checked)
     const char *end = decodeOutputBuffer + rawQueryLen;
 
-    while (ptr < end) {
-        ptr = static_cast<const char *>(memchr(ptr, '!', end - ptr));
-        if (!ptr) break;
-
-        if (ptr + 1 >= end) break;
+    if (const size_t bangPos = findFirstValidBangPosition(decodeOutputBuffer + 1, rawQueryLen - 1);
+        bangPos != SIZE_MAX) {
+        const size_t actualPos = bangPos + 1;
+        const char *ptr = decodeOutputBuffer + actualPos;
 
         const auto space_pos = static_cast<const char *>(memchr(ptr, ' ', end - ptr));
         const size_t bangEndPos = space_pos ? space_pos - ptr : end - ptr;
 
-        if (bangEndPos < 2) {
-            ptr++;
-            continue;
-        }
-
         const std::string_view bangCmd(ptr, bangEndPos);
-        if (const auto it = BANG_URLS.find(bangCmd); it != BANG_URLS.end()) {
-            bestMatch = BangMatch(bangCmd, ptr - decodeOutputBuffer, bangEndPos);
-            break;
-        }
-
-        ptr++;
+        bestMatch = BangMatch(bangCmd, actualPos, bangEndPos);
     }
 
     // If no valid bangs found, use default search
