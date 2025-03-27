@@ -17,6 +17,7 @@
 #include "include/bang.h"
 #include "include/memory_pool.h"
 #include "include/url_processing.h"
+#include "include/http_handler.h"
 
 constexpr int PORT = 3000;
 constexpr int BACKLOG = 5;
@@ -119,38 +120,27 @@ void processRequest(RequestContext *ctx) {
     const char *requestStart = ctx->requestBuffer;
     const char *requestEnd = ctx->requestBuffer + ctx->bytesRead;
 
-    // Find first space - after HTTP method
-    const char *urlStart = nullptr;
-    for (const char *p = requestStart; p < requestEnd - 1; p++) {
-        if (*p == HTTP_SPACE) {
-            urlStart = p + 1;
-            break;
+    const std::string_view requestStr(requestStart, ctx->bytesRead);
+
+    if (const std::string_view path = extractPath(requestStr); path == "/") {
+        // Home page with OpenSearch link
+        if (requestStr.find("?q=") != std::string_view::npos) {
+            const std::string_view url(requestStart, requestEnd - requestStart);
+            auto [searchUrl, encodedQuery] = processQuery(url, ctx->decodeBuffer, ctx->encodeBuffer);
+            ctx->responseLen = createRedirectResponse(searchUrl, encodedQuery, ctx->responseBuffer).size();
+            return;
         }
+        // Serve home page
+        ctx->responseLen = createHttpResponse(HttpStatus::OK, CONTENT_TYPE_HTML, HOME_PAGE_HTML, ctx->responseBuffer).size();
+    } else if (path == "/opensearch.xml") {
+        // Serve OpenSearch XML
+        ctx->responseLen = createHttpResponse(HttpStatus::OK, CONTENT_TYPE_XML, OPENSEARCH_XML, ctx->responseBuffer).size();
+    } else {
+        // For any other path, process as potential search query
+        const std::string_view url(requestStart, requestEnd - requestStart);
+        auto [searchUrl, encodedQuery] = processQuery(url, ctx->decodeBuffer, ctx->encodeBuffer);
+        ctx->responseLen = createRedirectResponse(searchUrl, encodedQuery, ctx->responseBuffer).size();
     }
-
-    if (!urlStart) return; // Invalid request
-
-    // Find second space - after URL
-    const char *urlEnd = nullptr;
-    for (const char *p = urlStart; p < requestEnd - 1; p++) {
-        if (*p == HTTP_SPACE) {
-            urlEnd = p;
-            break;
-        }
-        // Early termination if we hit the end of line
-        if (*p == HTTP_CR && *(p + 1) == HTTP_NL) {
-            break;
-        }
-    }
-
-    if (!urlEnd) return; // Invalid request
-
-    const std::string_view url(urlStart, urlEnd - urlStart);
-
-    auto [searchUrl, encodedQuery] = processQuery(url, ctx->decodeBuffer, ctx->encodeBuffer);
-    const auto response = createRedirectResponse(searchUrl, encodedQuery, ctx->responseBuffer);
-
-    ctx->responseLen = response.size();
 }
 
 int setupServerSocket() {

@@ -1,11 +1,7 @@
 #include "../include/bang.h"
+#include "../include/http_handler.h"
 #include <iostream>
 #include <fstream>
-#include <netdb.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <cstring>
 
 absl::flat_hash_map<std::string_view, std::string_view> BANG_URLS = {};
 absl::flat_hash_map<std::string_view, std::string> BANG_DOMAINS = {};
@@ -25,85 +21,12 @@ const std::unordered_map<std::string_view, Category> CATEGORY_MAP = {
 bool loadBangDataFromUrl(const std::string &url) {
     try {
         simdjson::dom::parser parser;
-
-        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        if (sockfd < 0) {
-            std::cerr << "Error creating socket\n";
+        
+        std::string json_str = makeHttpRequest(url, "application/json");
+        
+        if (json_str.empty()) {
             return false;
         }
-
-        std::string hostname;
-        std::string path;
-
-        size_t hostStart = url.find("://");
-        if (hostStart != std::string::npos) {
-            hostStart += 3; // Skip "://"
-        } else {
-            hostStart = 0;
-        }
-
-        if (size_t pathStart = url.find('/', hostStart); pathStart != std::string::npos) {
-            hostname = url.substr(hostStart, pathStart - hostStart);
-            path = url.substr(pathStart);
-        } else {
-            hostname = url.substr(hostStart);
-            path = "/";
-        }
-
-        hostent *server = gethostbyname(hostname.c_str());
-        if (server == nullptr) {
-            std::cerr << "Error: Could not resolve hostname " << hostname << std::endl;
-            close(sockfd);
-            return false;
-        }
-
-        sockaddr_in serverAddr{};
-        std::memset(&serverAddr, 0, sizeof(serverAddr));
-        serverAddr.sin_family = AF_INET;
-        std::memcpy(&serverAddr.sin_addr.s_addr, server->h_addr, server->h_length);
-        serverAddr.sin_port = htons(80);
-
-        if (connect(sockfd, reinterpret_cast<sockaddr *>(&serverAddr), sizeof(serverAddr)) < 0) {
-            std::cerr << "Error connecting to server\n";
-            close(sockfd);
-            return false;
-        }
-
-        std::string request = "GET " + path + " HTTP/1.1\r\n";
-        request += "Host: " + hostname + "\r\n";
-        request += "User-Agent: BangServer/1.0\r\n";
-        request += "Accept: application/json\r\n";
-        request += "Connection: close\r\n\r\n";
-
-        if (send(sockfd, request.c_str(), request.length(), 0) < 0) {
-            std::cerr << "Error sending HTTP request\n";
-            close(sockfd);
-            return false;
-        }
-
-        std::string response;
-        char buffer[4096];
-        ssize_t bytesRead;
-
-        while ((bytesRead = recv(sockfd, buffer, sizeof(buffer) - 1, 0)) > 0) {
-            buffer[bytesRead] = '\0';
-            response += buffer;
-        }
-
-        close(sockfd);
-
-        if (response.empty()) {
-            std::cerr << "Error: Empty response from server\n";
-            return false;
-        }
-
-        size_t bodyStart = response.find("\r\n\r\n");
-        if (bodyStart == std::string::npos) {
-            std::cerr << "Error: Invalid HTTP response format\n";
-            return false;
-        }
-
-        std::string json_str = response.substr(bodyStart + 4);
 
         auto json_result = parser.parse(json_str);
         simdjson::dom::element json;

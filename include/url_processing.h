@@ -179,6 +179,3 @@ size_t urlEncode(std::string_view str, char *buffer);
 
 std::pair<std::string_view, std::string_view> processQuery(std::string_view url, char *decode_buffer = nullptr,
                                                            char *encode_buffer = nullptr);
-
-std::string_view createRedirectResponse(std::string_view searchUrl, std::string_view encodedQuery,
-                                        char *buffer = nullptr);

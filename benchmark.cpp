@@ -20,6 +20,7 @@
 #include "include/bang.h"
 #include "include/memory_pool.h"
 #include "include/url_processing.h"
+#include "include/http_handler.h"
 
 std::string generateRandomQuery(const bool includeBang, std::mt19937 &rng) {
     static const std::vector<std::string> bangs = {

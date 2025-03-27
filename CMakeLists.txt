@@ -38,6 +38,7 @@ add_executable(BangServer
         src/bang.cpp
         src/simdjson.cpp
         src/url_processing.cpp
+        src/http_handler.cpp
 )
 
 add_executable(BangBenchmark
@@ -45,6 +46,7 @@ add_executable(BangBenchmark
         src/bang.cpp
         src/simdjson.cpp
         src/url_processing.cpp
+        src/http_handler.cpp
 )
 
 target_include_directories(BangServer PRIVATE ${LIBURING_INCLUDE_DIRS})
