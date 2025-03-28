@@ -404,7 +404,7 @@ int main(const int argc, char *argv[]) {
         std::cerr << "Failed to load bang data from API\n";
         return 1;
     }
-    std::cout << "Successfully loaded " << BANG_URLS.size() << " bang URLs\n";
+    std::cout << "Successfully loaded " << ALL_BANGS.size() << " bang URLs\n";
 
     // RNG
     std::random_device rd;

@@ -29,6 +29,8 @@ struct Bang {
     std::string trigger;
     std::string url_template;
 
+    Bang() = default;
+
     Bang(std::string t, std::string u)
         : trigger(std::move(t)), url_template(std::move(u)) {
     }
@@ -46,9 +48,9 @@ struct Bang {
     }
 };
 
-extern absl::flat_hash_map<std::string_view, std::string_view> BANG_URLS;
-extern absl::flat_hash_map<std::string_view, std::string> BANG_DOMAINS;
-extern std::vector<Bang> ALL_BANGS;
+extern absl::flat_hash_map<std::string, Bang> ALL_BANGS;
 extern const std::unordered_map<std::string_view, Category> CATEGORY_MAP;
 
 bool loadBangDataFromUrl(const std::string &url);
+bool loadBangDataFromFile(const std::string &filePath);
+std::string getCustomBangsFilePath();

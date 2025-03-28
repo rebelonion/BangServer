@@ -32,7 +32,7 @@ struct alignas(64) AlignedBuffer {
     char *buffer;
     size_t size;
 
-    explicit AlignedBuffer(size_t bufSize = 4096) : size(bufSize) {
+    explicit AlignedBuffer(const size_t bufSize = 4096) : size(bufSize) {
         buffer = static_cast<char *>(alignedAlloc(bufSize, 64));
     }
 

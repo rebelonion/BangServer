@@ -39,6 +39,52 @@ cmake -B cmake-build-release -DCMAKE_BUILD_TYPE=Release && cmake --build cmake-b
 # More options can be found with --help
 ```
 
+## Custom Bangs
+
+You can add custom bangs or override existing ones by creating a JSON file with your bangs.
+
+### Usage
+
+1. Create a `bangs.json` file in the same directory as the application, or
+2. Set the `BANG_CONFIG_FILE` environment variable to the path of your custom bangs file
+
+```bash
+# Using environment variable
+BANG_CONFIG_FILE=/path/to/your/custom-bangs.json ./cmake-build-release/bangserver
+```
+
+### File Format
+
+The JSON file should contain an array of bang objects with the same format as the DuckDuckGo API:
+
+```json
+[
+  {
+    "t": "example",
+    "u": "https://example.com/search?q={{{s}}}",
+    "d": "example.com",
+    "s": "Example Search"
+  },
+  {
+    "t": "custom",
+    "u": "https://customsearch.com/?q={{{s}}}"
+  }
+]
+```
+
+Required fields:
+- `t`: Trigger (without the leading `!`)
+- `u`: URL template (use `{{{s}}}` as placeholder for the search query)
+
+Optional fields:
+- `d`: Domain
+- `s`: Short name
+- `c`: Category
+- `sc`: Subcategory
+- `r`: Relevance
+
+If a custom bang has the same trigger as an existing bang, it will override the original.
+
 ## Technical Details
 
 - Written in C++23

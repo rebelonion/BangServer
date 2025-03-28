@@ -2,10 +2,10 @@
 #include "../include/http_handler.h"
 #include <iostream>
 #include <fstream>
+#include <cstdlib>
+#include <filesystem>
 
-absl::flat_hash_map<std::string_view, std::string_view> BANG_URLS = {};
-absl::flat_hash_map<std::string_view, std::string> BANG_DOMAINS = {};
-std::vector<Bang> ALL_BANGS;
+absl::flat_hash_map<std::string, Bang> ALL_BANGS = {};
 
 const std::unordered_map<std::string_view, Category> CATEGORY_MAP = {
     {"Entertainment", Category::Entertainment},
@@ -18,32 +18,18 @@ const std::unordered_map<std::string_view, Category> CATEGORY_MAP = {
     {"Translation", Category::Translation}
 };
 
-bool loadBangDataFromUrl(const std::string &url) {
+std::string getCustomBangsFilePath() {
+    if (const char *envPath = std::getenv("BANG_CONFIG_FILE")) {
+        return envPath;
+    }
+
+    return "bangs.json";
+}
+
+int processBangJsonArray(const simdjson::dom::array &items, bool isOverride) {
     try {
-        simdjson::dom::parser parser;
-        
-        std::string json_str = makeHttpRequest(url, "application/json");
-        
-        if (json_str.empty()) {
-            return false;
-        }
-
-        auto json_result = parser.parse(json_str);
-        simdjson::dom::element json;
-        auto error = json_result.get(json);
-        if (error) {
-            std::cerr << "JSON parse error: " << error_message(error) << std::endl;
-            return false;
-        }
-
-        simdjson::dom::array items;
-        error = json.get_array().get(items);
-        if (error) {
-            std::cerr << "JSON not an array: " << error_message(error) << std::endl;
-            return false;
-        }
-
-        ALL_BANGS.reserve(items.size());
+        size_t addedCount = 0;
+        simdjson::error_code error;
 
         for (simdjson::dom::element item: items) {
             auto trigger = std::string("!");
@@ -54,7 +40,8 @@ bool loadBangDataFromUrl(const std::string &url) {
                 std::cerr << "Missing required 'trigger' field in bang entry" << std::endl;
                 continue;
             }
-            trigger += t;
+            std::string trigger_value(t);
+            trigger += trigger_value;
 
             std::string_view u;
             error = item["u"].get_string().get(u);
@@ -62,7 +49,7 @@ bool loadBangDataFromUrl(const std::string &url) {
                 std::cerr << "Missing required 'url_template' field in bang entry" << std::endl;
                 continue;
             }
-            std::string url_template(u);
+            auto url_template = std::string(u);
 
             // Optional fields
             std::optional<Category> category;
@@ -79,6 +66,10 @@ bool loadBangDataFromUrl(const std::string &url) {
             error = item["d"].get_string().get(d);
             if (!error) {
                 domain = std::string(d);
+            }
+
+            if (domain && !domain->starts_with("http")) {
+                domain->insert(0, "https://");
             }
 
             std::optional<uint64_t> relevance;
@@ -108,7 +99,7 @@ bool loadBangDataFromUrl(const std::string &url) {
                 subcategory = std::string(sc);
             }
 
-            ALL_BANGS.emplace_back(
+            Bang bang(
                 category,
                 domain,
                 relevance,
@@ -118,26 +109,111 @@ bool loadBangDataFromUrl(const std::string &url) {
                 url_template
             );
 
-            BANG_URLS[ALL_BANGS.back().trigger] = ALL_BANGS.back().url_template;
-
-            if (domain) {
-                if (const auto& bang = ALL_BANGS.back(); bang.domain) {
-                    std::string domainView = *bang.domain;
-                    if (!domainView.starts_with("http")) {
-                        domainView.insert(0, "https://");
-                    }
-                    BANG_DOMAINS[bang.trigger] = std::move(domainView);
-                }
+            ALL_BANGS[trigger] = std::move(bang);
+            
+            if (isOverride) {
+                std::cout << "Overridden bang command: " << trigger << "\n";
             }
+
+            addedCount++;
         }
 
-        std::cout << "Loaded " << ALL_BANGS.size() << " bang commands" << std::endl;
-        return true;
+        return addedCount;
+    } catch (const std::exception &e) {
+        std::cerr << "Error processing bang data: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool loadBangDataFromUrl(const std::string &url) {
+    try {
+        simdjson::dom::parser parser;
+
+        const std::string json_str = makeHttpRequest(url, "application/json");
+
+        if (json_str.empty()) {
+            return false;
+        }
+
+        const auto json_result = parser.parse(json_str);
+        simdjson::dom::element json;
+        auto error = json_result.get(json);
+        if (error) {
+            std::cerr << "JSON parse error: " << error_message(error) << std::endl;
+            return false;
+        }
+
+        simdjson::dom::array items;
+        error = json.get_array().get(items);
+        if (error) {
+            std::cerr << "JSON not an array: " << error_message(error) << std::endl;
+            return false;
+        }
+
+        if (const int added = processBangJsonArray(items, false); added > 0) {
+            std::cout << "Loaded " << added << " bang commands from URL" << std::endl;
+            return true;
+        }
+
+        return false;
     } catch (const simdjson::simdjson_error &e) {
         std::cerr << "JSON parsing error: " << e.what() << std::endl;
         return false;
     } catch (const std::exception &e) {
-        std::cerr << "Error loading bang data: " << e.what() << std::endl;
+        std::cerr << "Error loading bang data from URL: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool loadBangDataFromFile(const std::string &filePath) {
+    try {
+        if (!std::filesystem::exists(filePath)) {
+            std::cout << "Custom bangs file not found at: " << filePath << std::endl;
+            return false;
+        }
+
+        std::ifstream file(filePath);
+        if (!file.is_open()) {
+            std::cerr << "Failed to open custom bangs file: " << filePath << std::endl;
+            return false;
+        }
+
+        std::string json_str((std::istreambuf_iterator(file)), std::istreambuf_iterator<char>());
+        file.close();
+
+        if (json_str.empty()) {
+            std::cerr << "Custom bangs file is empty: " << filePath << std::endl;
+            return false;
+        }
+
+        simdjson::dom::parser parser;
+        auto json_result = parser.parse(json_str);
+        simdjson::dom::element json;
+        auto error = json_result.get(json);
+        if (error) {
+            std::cerr << "JSON parse error in custom bangs file: " << error_message(error) << std::endl;
+            return false;
+        }
+
+        simdjson::dom::array items;
+        error = json.get_array().get(items);
+        if (error) {
+            std::cerr << "Custom bangs file must contain a JSON array: " << error_message(error) << std::endl;
+            return false;
+        }
+
+        if (const int added = processBangJsonArray(items, true); added > 0) {
+            std::cout << "Loaded " << added << " custom bang commands from: " << filePath <<
+                    std::endl;
+            return true;
+        }
+
+        return false;
+    } catch (const simdjson::simdjson_error &e) {
+        std::cerr << "JSON parsing error in custom bangs file: " << e.what() << std::endl;
+        return false;
+    } catch (const std::exception &e) {
+        std::cerr << "Error loading custom bang data from file: " << e.what() << std::endl;
         return false;
     }
 }

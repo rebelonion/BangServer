@@ -7,7 +7,6 @@
 
 size_t urlDecode(const std::string_view str, char *buffer) {
     char *outputBuffer = buffer;
-    std::unique_ptr<AlignedBuffer> tempBuffer;
     if (!outputBuffer) {
         const auto &buf = BufferPool::getDecodeBuffer();
         outputBuffer = buf.buffer;
@@ -82,7 +81,6 @@ size_t urlDecode(const std::string_view str, char *buffer) {
 
 size_t urlEncode(const std::string_view str, char *buffer) {
     char *outputBuffer = buffer;
-    std::unique_ptr<AlignedBuffer> tempBuffer;
     if (!outputBuffer) {
         const auto &buf = BufferPool::getEncodeBuffer();
         outputBuffer = buf.buffer;
@@ -249,8 +247,8 @@ size_t findFirstValidBangPosition(const char *buffer, const size_t length) {
         }
 
         // 5. Check if this is a known bang command in the BANG_URLS map
-        const std::string_view bangCmd(buffer + foundPos, bangEndPos);
-        if (const auto it = BANG_URLS.find(bangCmd); it != BANG_URLS.end()) {
+        const std::string bangCmd(buffer + foundPos, bangEndPos);
+        if (const auto it = ALL_BANGS.find(bangCmd); it != ALL_BANGS.end()) {
             return foundPos;
         }
 
@@ -261,14 +259,14 @@ size_t findFirstValidBangPosition(const char *buffer, const size_t length) {
 }
 
 struct BangMatch {
-    std::string_view bangCmd;
+    std::string bangCmd;
     size_t position;
     size_t length;
 
     BangMatch() : position(0), length(0) {
     }
 
-    BangMatch(const std::string_view cmd, const size_t pos, const size_t len)
+    BangMatch(const std::string& cmd, const size_t pos, const size_t len)
         : bangCmd(cmd), position(pos), length(len) {
     }
 
@@ -325,9 +323,9 @@ std::pair<std::string_view, std::string_view> processQuery(
         const auto space_pos = static_cast<const char *>(memchr(decodeOutputBuffer, ' ', rawQueryLen));
 
         if (const size_t bangEnd = space_pos ? space_pos - decodeOutputBuffer : rawQueryLen; bangEnd >= 2) {
-            const std::string_view bangCmd(decodeOutputBuffer, bangEnd);
-            if (const auto it = BANG_URLS.find(bangCmd); it != BANG_URLS.end()) {
-                std::string_view searchUrl = it->second;
+            const std::string bangCmd(decodeOutputBuffer, bangEnd);
+            if (const auto it = ALL_BANGS.find(bangCmd); it != ALL_BANGS.end()) {
+                std::string_view searchUrl = it->second.url_template;
 
                 if (space_pos && bangEnd < rawQueryLen) {
                     const std::string_view cleanQuery(decodeOutputBuffer + bangEnd + 1, rawQueryLen - bangEnd - 1);
@@ -336,8 +334,8 @@ std::pair<std::string_view, std::string_view> processQuery(
                 }
 
                 // No text after bang - check if we have a domain for this bang
-                if (const auto domainIt = BANG_DOMAINS.find(bangCmd); domainIt != BANG_DOMAINS.end()) {
-                    return {domainIt->second, std::string_view()};
+                if (it->second.domain) {
+                    return {*it->second.domain, std::string_view()};
                 }
                 return {searchUrl, std::string_view()};
             }
@@ -355,7 +353,7 @@ std::pair<std::string_view, std::string_view> processQuery(
         const auto space_pos = static_cast<const char *>(memchr(ptr, ' ', end - ptr));
         const size_t bangEndPos = space_pos ? space_pos - ptr : end - ptr;
 
-        const std::string_view bangCmd(ptr, bangEndPos);
+        const std::string bangCmd(ptr, bangEndPos);
         bestMatch = BangMatch(bangCmd, actualPos, bangEndPos);
     }
 
@@ -364,7 +362,7 @@ std::pair<std::string_view, std::string_view> processQuery(
         const size_t encodedLen = urlEncode(std::string_view(decodeOutputBuffer, rawQueryLen), encodeOutputBuffer);
         return {DEFAULT_SEARCH_URL, std::string_view(encodeOutputBuffer, encodedLen)};
     }
-    std::string_view searchUrl = BANG_URLS.find(bestMatch.bangCmd)->second;
+    std::string_view searchUrl = ALL_BANGS.find(std::string(bestMatch.bangCmd))->second.url_template;
 
     const auto &tempBuf = BufferPool::getTempBuffer();
     char *queryBuffer = tempBuf.buffer;
@@ -398,8 +396,8 @@ std::pair<std::string_view, std::string_view> processQuery(
     }
 
     if (stitchedQueryLen == 0) {
-        if (const auto domainIt = BANG_DOMAINS.find(bestMatch.bangCmd); domainIt != BANG_DOMAINS.end()) {
-            return {domainIt->second, std::string_view()};
+        if (const auto it = ALL_BANGS.find(std::string(bestMatch.bangCmd)); it != ALL_BANGS.end() && it->second.domain) {
+            return {*it->second.domain, std::string_view()};
         }
         return {searchUrl, std::string_view()};
     }

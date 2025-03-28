@@ -1,0 +1,30 @@
+[
+  {
+    "t": "example",
+    "u": "https://example.com/search?q={{{s}}}",
+    "d": "example.com",
+    "s": "Example Search",
+    "c": "Research",
+    "sc": "Reference"
+  },
+  {
+    "t": "local",
+    "u": "http://localhost:8080/search?query={{{s}}}",
+    "d": "localhost",
+    "s": "Local Development"
+  },
+  {
+    "t": "gpt",
+    "u": "https://chat.openai.com/?q={{{s}}}",
+    "d": "openai.com",
+    "s": "ChatGPT",
+    "c": "Tech"
+  },
+  {
+    "t": "claude",
+    "u": "https://claude.ai/chats?q={{{s}}}",
+    "d": "claude.ai",
+    "s": "Claude AI",
+    "c": "Tech"
+  }
+]
