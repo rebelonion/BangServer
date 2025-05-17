@@ -108,5 +108,11 @@ install(TARGETS BangServer
         RUNTIME DESTINATION bin
 )
 
-configure_file(bangs.example.json ${CMAKE_CURRENT_BINARY_DIR}/bangs.json COPYONLY)
-configure_file(bangserver.example.toml ${CMAKE_CURRENT_BINARY_DIR}/bangserver.toml COPYONLY)
+add_custom_command(TARGET BangServer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${CMAKE_CURRENT_SOURCE_DIR}/bangs.example.json
+        $<TARGET_FILE_DIR:BangServer>/bangs.json
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${CMAKE_CURRENT_SOURCE_DIR}/bangserver.example.toml
+        $<TARGET_FILE_DIR:BangServer>/bangserver.toml
+)
