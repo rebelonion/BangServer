@@ -18,6 +18,7 @@
 #include <sys/time.h>
 
 #include "include/bang_manager.h"
+#include "include/bang_provider.h"
 #include "include/memory_pool.h"
 #include "include/url_processing.h"
 #include "include/http_handler.h"
