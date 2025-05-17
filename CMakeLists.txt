@@ -11,11 +11,16 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBURING REQUIRED liburing)
 
 # Add Abseil
+include(FetchContent)
 set(ABSL_PROPAGATE_CXX_STD ON)
-add_subdirectory(third_party/abseil-cpp)
+FetchContent_Declare(
+        abseil
+        GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
+        GIT_TAG  20250512.0
+)
+FetchContent_MakeAvailable(abseil)
 
 # Add toml11
-include(FetchContent)
 FetchContent_Declare(
         toml11
         GIT_REPOSITORY https://github.com/ToruNiina/toml11.git
