@@ -20,7 +20,6 @@ struct ServerConfig;
 std::string generateOpenSearchXml(const ServerConfig &config);
 
 extern std::string OPENSEARCH_XML_CONTENT;
-extern const std::string_view OPENSEARCH_XML;
 
 std::string_view createHttpResponse(HttpStatus status, std::string_view contentType,
                                     std::string_view body, char *buffer);

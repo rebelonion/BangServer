@@ -136,7 +136,7 @@ void processRequest(RequestContext *ctx) {
                 size();
     } else if (path == "/opensearch.xml") {
         // Serve OpenSearch XML
-        ctx->responseLen = createHttpResponse(HttpStatus::OK, CONTENT_TYPE_XML, OPENSEARCH_XML, ctx->responseBuffer).
+        ctx->responseLen = createHttpResponse(HttpStatus::OK, CONTENT_TYPE_XML, OPENSEARCH_XML_CONTENT, ctx->responseBuffer).
                 size();
     } else {
         // For any other path, process as potential search query

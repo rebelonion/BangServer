@@ -51,7 +51,6 @@ std::string generateOpenSearchXml(const ServerConfig& config) {
 }
 
 std::string OPENSEARCH_XML_CONTENT;
-const std::string_view OPENSEARCH_XML = OPENSEARCH_XML_CONTENT;
 
 std::string_view createHttpResponse(const HttpStatus status, const std::string_view contentType,
                                     const std::string_view body, char *buffer) {
