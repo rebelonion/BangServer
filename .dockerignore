@@ -1,0 +1,19 @@
+# Build directories
+cmake-build-debug/
+cmake-build-release/
+build/
+
+# Git
+.git/
+.github/
+.gitignore
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker files (prevent recursive copy)
+Dockerfile
+docker-compose.yml

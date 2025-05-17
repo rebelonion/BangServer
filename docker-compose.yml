@@ -1,0 +1,19 @@
+version: '3'
+
+services:
+  bangserver:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount a local config directory to the standard location
+      - ./config:/etc/bangserver:ro
+    environment:
+      # Additional environment variables if needed
+      - BANG_PORT=8080
+    # Uncomment to enable resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '4'
+    #       memory: 500M

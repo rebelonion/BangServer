@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential liburing-dev pkg-config
+
+      - name: Build
+        run: |
+          cmake -B cmake-build-release -DCMAKE_BUILD_TYPE=Release
+          cmake --build cmake-build-release --parallel
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p release
+          cp cmake-build-release/bangserver release/
+          cp bangserver.example.toml release/bangserver.toml
+          cp bangs.example.json release/bangs.json
+          cp README.md release/
+          cp LICENSE.md release/
+          tar -czvf bangserver-${{ github.ref_name }}-linux-x86_64.tar.gz -C release .
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: bangserver-${{ github.ref_name }}-linux-x86_64.tar.gz
+          generate_release_notes: true
