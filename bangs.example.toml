@@ -1,0 +1,37 @@
+# Example bangs.toml configuration file
+# Place this file in one of the following locations:
+# - Current directory
+# - ~/.config/bangserver/ (Linux)
+# - %APPDATA%\BangServer\ (Windows)
+# - ~/Library/Application Support/BangServer/ (macOS)
+# - /etc/bangserver/ (System-wide on Linux)
+
+# Bangs configuration
+# Each entry in the array represents a bang command
+[[bangs]]
+trigger = "example"
+url_template = "https://example.com/search?q={{{s}}}"
+domain = "example.com"
+short_name = "Example Search"
+category = "Research"
+subcategory = "Reference"
+
+[[bangs]]
+trigger = "local"
+url_template = "http://localhost:8080/search?query={{{s}}}"
+domain = "localhost"
+short_name = "Local Development"
+
+[[bangs]]
+trigger = "gpt"
+url_template = "https://chat.openai.com/?q={{{s}}}"
+domain = "openai.com"
+short_name = "ChatGPT"
+category = "Tech"
+
+[[bangs]]
+trigger = "claude"
+url_template = "https://claude.ai/chats?q={{{s}}}"
+domain = "claude.ai"
+short_name = "Claude AI"
+category = "Tech"

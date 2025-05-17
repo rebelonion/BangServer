@@ -6,7 +6,8 @@
 enum class HttpStatus {
     OK = 200,
     FOUND = 302,
-    NOT_FOUND = 404
+    NOT_FOUND = 404,
+    REQUEST_TOO_LARGE = 413
 };
 
 constexpr std::string_view CONTENT_TYPE_HTML = "text/html";

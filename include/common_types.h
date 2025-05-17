@@ -1,13 +1,8 @@
 #pragma once
 
 #include <string>
-#include <string_view>
 #include <optional>
-#include <unordered_map>
-#include <vector>
 #include <absl/container/flat_hash_map.h>
-
-#include "simdjson.h"
 
 enum class Category {
     Entertainment,
@@ -49,8 +44,3 @@ struct Bang {
 };
 
 extern absl::flat_hash_map<std::string, Bang> ALL_BANGS;
-extern const std::unordered_map<std::string_view, Category> CATEGORY_MAP;
-
-bool loadBangDataFromUrl(const std::string &url);
-bool loadBangDataFromFile(const std::string &filePath);
-std::string getCustomBangsFilePath();

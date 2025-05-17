@@ -42,6 +42,23 @@ std::string_view createHttpResponse(const HttpStatus status, const std::string_v
     char *ptr = buffer;
     std::string statusLine;
 
+    if (status == HttpStatus::REQUEST_TOO_LARGE) {
+        constexpr std::string_view errorResp = "HTTP/1.1 413 Request Entity Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        memcpy(ptr, errorResp.data(), errorResp.size());
+        return {buffer, errorResp.size()};
+    }
+
+    const auto& respBuffer = BufferPool::getResponseBuffer();
+    const size_t maxResponseSize = respBuffer.size;
+    
+    // Calculate estimated size to validate against buffer capacity
+    if (constexpr size_t estimatedHeaderSize = 200; estimatedHeaderSize + body.size() > maxResponseSize) {
+        // If would overflow buffer, return error response
+        constexpr std::string_view errorResp = "HTTP/1.1 413 Request Entity Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        memcpy(ptr, errorResp.data(), errorResp.size());
+        return {buffer, errorResp.size()};
+    }
+
     switch (status) {
         case HttpStatus::OK:
             statusLine = "HTTP/1.1 200 OK\r\n";
@@ -94,14 +111,21 @@ std::string_view createHttpResponse(const HttpStatus status, const std::string_v
     return {buffer, static_cast<std::string_view::size_type>(ptr - buffer)};
 }
 
-// Create redirect response (specialized for our use case)
 std::string_view createRedirectResponse(const std::string_view searchUrl, const std::string_view encodedQuery,
                                         char *buffer) {
     char *ptr = buffer;
+    const auto& respBuffer = BufferPool::getResponseBuffer();
+    const size_t maxResponseSize = respBuffer.size;
 
     constexpr std::string_view header = "HTTP/1.1 302 Found\r\nLocation: ";
     constexpr std::string_view footer = "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     constexpr std::string_view placeholder = "{{{s}}}";
+
+    if (const size_t estimatedSize = header.size() + searchUrl.size() + encodedQuery.size() + footer.size(); estimatedSize > maxResponseSize) {
+        // If estimated size would overflow buffer, return error response
+        return createHttpResponse(HttpStatus::REQUEST_TOO_LARGE, "text/html", "", buffer);
+    }
+    
     memcpy(ptr, header.data(), header.size());
     ptr += header.size();
 
@@ -118,14 +142,12 @@ std::string_view createRedirectResponse(const std::string_view searchUrl, const 
         memcpy(ptr, placeholderPos + placeholder.size(), afterLen);
         ptr += afterLen;
     } else {
-        // Append encoded query to searchUrl
         memcpy(ptr, searchUrl.data(), searchUrl.size());
         ptr += searchUrl.size();
         memcpy(ptr, encodedQuery.data(), encodedQuery.size());
         ptr += encodedQuery.size();
     }
 
-    // Copy footer
     memcpy(ptr, footer.data(), footer.size());
     ptr += footer.size();
 
@@ -181,6 +203,11 @@ std::string_view extractPath(const std::string_view requestData) {
 
 // Blocking for now
 std::string makeHttpRequest(const std::string &url, const std::string &acceptType) {
+    if (url.length() > MAX_URL_LENGTH) {
+        std::cerr << "Error: URL exceeds maximum allowed length\n";
+        return "";
+    }
+    
     const int socFd = socket(AF_INET, SOCK_STREAM, 0);
     if (socFd < 0) {
         std::cerr << "Error creating socket\n";
@@ -205,7 +232,18 @@ std::string makeHttpRequest(const std::string &url, const std::string &acceptTyp
         path = "/";
     }
 
-    // Resolve hostname
+    if (hostname.length() > 253) {
+        std::cerr << "Error: Hostname exceeds maximum allowed length\n";
+        close(socFd);
+        return "";
+    }
+    
+    if (path.length() > 2048) {
+        std::cerr << "Error: Path exceeds maximum allowed length\n";
+        close(socFd);
+        return "";
+    }
+
     const hostent *server = gethostbyname(hostname.c_str());
     if (server == nullptr) {
         std::cerr << "Error: Could not resolve hostname " << hostname << std::endl;
@@ -213,7 +251,6 @@ std::string makeHttpRequest(const std::string &url, const std::string &acceptTyp
         return "";
     }
 
-    // Set up connection
     sockaddr_in serverAddr{};
     std::memset(&serverAddr, 0, sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
@@ -238,14 +275,20 @@ std::string makeHttpRequest(const std::string &url, const std::string &acceptTyp
         return "";
     }
 
-    // Receive response
+    // Receive response with size limit
     std::string response;
     char buffer[4096];
     ssize_t bytesRead;
+    constexpr size_t maxResponseSize = 1024 * 1024 * 10; // 10MB max response size
 
     while ((bytesRead = recv(socFd, buffer, sizeof(buffer) - 1, 0)) > 0) {
         buffer[bytesRead] = '\0';
         response += buffer;
+
+        if (const auto length = response.length(); length > maxResponseSize) {
+            std::cerr << "Warning: Response exceeds maximum allowed size, truncating\n";
+            break;
+        }
     }
 
     close(socFd);

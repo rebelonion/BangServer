@@ -1,9 +1,12 @@
-#include "../include/url_processing.h"
-#include "../include/bang.h"
+#include <utility>
 
 #ifdef __x86_64__
 #include <immintrin.h>
 #endif
+
+#include "../include/url_processing.h"
+#include "../include/bang_manager.h"
+
 
 size_t urlDecode(const std::string_view str, char *buffer) {
     char *outputBuffer = buffer;
@@ -12,8 +15,14 @@ size_t urlDecode(const std::string_view str, char *buffer) {
         outputBuffer = buf.buffer;
     }
 
-    size_t dest = 0;
+    // Worst case: each encoded char (%xx) takes up 3 bytes in input but only 1 in output
     const size_t len = str.length();
+    if (len > MAX_QUERY_LENGTH) {
+        outputBuffer[0] = '\0';
+        return 0;
+    }
+
+    size_t dest = 0;
     const char *src = str.data();
     const char *end = src + len;
 
@@ -86,11 +95,19 @@ size_t urlEncode(const std::string_view str, char *buffer) {
         outputBuffer = buf.buffer;
     }
 
+    // Worst case: every char needs encoding (3x input size)
+    // Each char could expand to %XX (3 bytes)
+    const size_t len = str.length();
+    if (len > MAX_QUERY_LENGTH / 3) {
+        // Return empty string if input could potentially exceed buffer
+        outputBuffer[0] = '\0';
+        return 0;
+    }
+
     const auto &hexTables = getHexTables();
     const auto &safeChars = getSafeChars();
 
     size_t dest = 0;
-    const size_t len = str.length();
     auto src = reinterpret_cast<const unsigned char *>(str.data());
     const unsigned char *end = src + len;
 
@@ -266,8 +283,8 @@ struct BangMatch {
     BangMatch() : position(0), length(0) {
     }
 
-    BangMatch(const std::string& cmd, const size_t pos, const size_t len)
-        : bangCmd(cmd), position(pos), length(len) {
+    BangMatch(std::string cmd, const size_t pos, const size_t len)
+        : bangCmd(std::move(cmd)), position(pos), length(len) {
     }
 
     bool operator<(const BangMatch &other) const {
@@ -292,6 +309,11 @@ std::pair<std::string_view, std::string_view> processQuery(
 
     const char *url_data = url.data();
     const size_t url_size = url.size();
+
+    if (url_size > MAX_URL_LENGTH) {
+        return {std::string_view(), std::string_view()}; // Signal error - too large
+    }
+
     constexpr size_t query_param_size = QUERY_PARAM.size();
 
     const auto q_pos = static_cast<const char *>(memchr(url_data, '?', url_size));
@@ -310,6 +332,10 @@ std::pair<std::string_view, std::string_view> processQuery(
 
     const auto query_end_ptr = static_cast<const char *>(memchr(url_data + queryStart, ' ', url_size - queryStart));
     const size_t encodedQueryLen = query_end_ptr ? query_end_ptr - (url_data + queryStart) : url_size - queryStart;
+
+    if (encodedQueryLen > MAX_QUERY_LENGTH) {
+        return {std::string_view(), std::string_view()}; // Signal error - query too large
+    }
 
     const std::string_view encodedQuery(url_data + queryStart, encodedQueryLen);
     const size_t rawQueryLen = urlDecode(encodedQuery, decodeOutputBuffer);
@@ -396,7 +422,8 @@ std::pair<std::string_view, std::string_view> processQuery(
     }
 
     if (stitchedQueryLen == 0) {
-        if (const auto it = ALL_BANGS.find(std::string(bestMatch.bangCmd)); it != ALL_BANGS.end() && it->second.domain) {
+        if (const auto it = ALL_BANGS.find(std::string(bestMatch.bangCmd));
+            it != ALL_BANGS.end() && it->second.domain) {
             return {*it->second.domain, std::string_view()};
         }
         return {searchUrl, std::string_view()};

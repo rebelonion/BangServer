@@ -3,9 +3,14 @@
 #include <string_view>
 #include <utility>
 #include <thread>
+#include "common_types.h"
 
 constexpr std::string_view QUERY_PARAM = "?q=";
-constexpr std::string_view DEFAULT_SEARCH_URL = "https://www.google.com/search?q=";
+constexpr size_t MAX_QUERY_LENGTH = 2048;
+constexpr size_t MAX_URL_LENGTH = 4096;
+
+// This will be initialized from config
+inline std::string DEFAULT_SEARCH_URL = "https://www.google.com/search?q=";
 
 // 16-byte aligned buffer allocation for SIMD operations
 inline void *alignedAlloc(size_t size, size_t alignment = 16) {

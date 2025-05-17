@@ -1,5 +1,4 @@
 #include <iostream>
-#include <string>
 #include <string_view>
 #include <chrono>
 #include <cstring>
@@ -14,16 +13,14 @@
 #include <fcntl.h>
 #include <liburing.h>
 
-#include "include/bang.h"
+#include "include/bang_manager.h"
+#include "include/bang_provider.h"
+#include "include/bang_provider_factory.h"
 #include "include/memory_pool.h"
 #include "include/url_processing.h"
 #include "include/http_handler.h"
+#include "include/server_config.h"
 
-constexpr int PORT = 3000;
-constexpr int BACKLOG = 5;
-
-constexpr size_t QUEUE_DEPTH = 256;
-constexpr size_t REQUEST_BUFFER_SIZE = 4096;
 constexpr char HTTP_SPACE = ' ';
 constexpr char HTTP_NL = '\n';
 constexpr char HTTP_CR = '\r';
@@ -123,18 +120,24 @@ void processRequest(RequestContext *ctx) {
     const std::string_view requestStr(requestStart, ctx->bytesRead);
 
     if (const std::string_view path = extractPath(requestStr); path == "/") {
-        // Home page with OpenSearch link
         if (requestStr.find("?q=") != std::string_view::npos) {
             const std::string_view url(requestStart, requestEnd - requestStart);
             auto [searchUrl, encodedQuery] = processQuery(url, ctx->decodeBuffer, ctx->encodeBuffer);
+            if (searchUrl.empty() && encodedQuery.empty()) {
+                ctx->responseLen = createHttpResponse(HttpStatus::REQUEST_TOO_LARGE, CONTENT_TYPE_HTML, "",
+                                                      ctx->responseBuffer).size();
+                return;
+            }
             ctx->responseLen = createRedirectResponse(searchUrl, encodedQuery, ctx->responseBuffer).size();
             return;
         }
         // Serve home page
-        ctx->responseLen = createHttpResponse(HttpStatus::OK, CONTENT_TYPE_HTML, HOME_PAGE_HTML, ctx->responseBuffer).size();
+        ctx->responseLen = createHttpResponse(HttpStatus::OK, CONTENT_TYPE_HTML, HOME_PAGE_HTML, ctx->responseBuffer).
+                size();
     } else if (path == "/opensearch.xml") {
         // Serve OpenSearch XML
-        ctx->responseLen = createHttpResponse(HttpStatus::OK, CONTENT_TYPE_XML, OPENSEARCH_XML, ctx->responseBuffer).size();
+        ctx->responseLen = createHttpResponse(HttpStatus::OK, CONTENT_TYPE_XML, OPENSEARCH_XML, ctx->responseBuffer).
+                size();
     } else {
         // For any other path, process as potential search query
         const std::string_view url(requestStart, requestEnd - requestStart);
@@ -143,7 +146,7 @@ void processRequest(RequestContext *ctx) {
     }
 }
 
-int setupServerSocket() {
+int setupServerSocket(const ServerConfig &config) {
     const int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (serverSocket < 0) {
         std::cerr << "Failed to create socket\n";
@@ -172,15 +175,15 @@ int setupServerSocket() {
     sockaddr_in serverAddr{};
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_addr.s_addr = INADDR_ANY;
-    serverAddr.sin_port = htons(PORT);
+    serverAddr.sin_port = htons(config.port);
 
     if (bind(serverSocket, reinterpret_cast<sockaddr *>(&serverAddr), sizeof(serverAddr)) < 0) {
-        std::cerr << "Failed to bind to port " << PORT << "\n";
+        std::cerr << "Failed to bind to port " << config.port << "\n";
         close(serverSocket);
         return -1;
     }
 
-    if (listen(serverSocket, BACKLOG) < 0) {
+    if (listen(serverSocket, config.backlog) < 0) {
         std::cerr << "Failed to listen on socket\n";
         close(serverSocket);
         return -1;
@@ -196,9 +199,9 @@ void addAcceptRequest(io_uring *ring, const int serverFd, sockaddr_in *clientAdd
     io_uring_sqe_set_data(sqe, ctx);
 }
 
-void addReadRequest(io_uring *ring, RequestContext *ctx) {
+void addReadRequest(io_uring *ring, RequestContext *ctx, size_t bufferSize) {
     io_uring_sqe *sqe = io_uring_get_sqe(ring);
-    io_uring_prep_recv(sqe, ctx->clientFd, ctx->requestBuffer, REQUEST_BUFFER_SIZE - 1, 0);
+    io_uring_prep_recv(sqe, ctx->clientFd, ctx->requestBuffer, bufferSize - 1, 0);
     io_uring_sqe_set_data(sqe, ctx);
 }
 
@@ -215,32 +218,37 @@ void addCloseRequest(io_uring *ring, RequestContext *ctx) {
 }
 
 int main() {
-    std::cout << "Loading bang data from DuckDuckGo API..." << std::endl;
-    if (!loadBangDataFromUrl("https://duckduckgo.com/bang.js")) {
-        std::cerr << "Failed to load bang data from API\n";
-        return 1;
+    std::cout << "Loading configuration..." << std::endl;
+    ServerConfig config;
+
+    if (const auto configPath = ServerConfig::findConfigFile("bangserver.toml")) {
+        config.loadFromFile(configPath->string());
+    } else {
+        config.loadDefault();
     }
-    std::cout << "Successfully loaded " << ALL_BANGS.size() << " bang URLs from API\n";
 
-    const std::string customBangsPath = getCustomBangsFilePath();
-    loadBangDataFromFile(customBangsPath);
-    
-    std::cout << "Total loaded bangs: " << ALL_BANGS.size() << "\n";
+    DEFAULT_SEARCH_URL = config.defaultSearchUrl;
 
-    const int serverFd = setupServerSocket();
+    std::cout << "Initializing BangManager..." << std::endl;
+    BangManager bangManager(config);
+    bangManager.loadAllBangs();
+
+    ALL_BANGS = bangManager.getAllBangs();
+
+    const int serverFd = setupServerSocket(config);
     if (serverFd < 0) {
         return serverFd;
     }
 
     io_uring ring{};
     io_uring_params params{};
-    if (io_uring_queue_init_params(QUEUE_DEPTH, &ring, &params) < 0) {
+    if (io_uring_queue_init_params(config.queueDepth, &ring, &params) < 0) {
         std::cerr << "Failed to initialize io_uring\n";
         close(serverFd);
         return 1;
     }
 
-    std::cout << "BangServer starting on http://127.0.0.1:" << PORT << "\n";
+    std::cout << "BangServer starting on http://127.0.0.1:" << config.port << "\n";
     std::cout << "Ready\n";
 
     sockaddr_in clientAddr{};
@@ -281,7 +289,7 @@ int main() {
                 // Accept succeeded, prepare for read
                 ctx->clientFd = res;
                 ctx->state = ConnectionState::READ;
-                addReadRequest(&ring, ctx);
+                addReadRequest(&ring, ctx, config.requestBufferSize);
 
                 auto newCtx = std::make_unique<RequestContext>();
                 addAcceptRequest(&ring, serverFd, &clientAddr, &clientAddrLen, newCtx.get());

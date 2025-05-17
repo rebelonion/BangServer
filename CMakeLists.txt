@@ -10,8 +10,18 @@ set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG")
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBURING REQUIRED liburing)
 
+# Add Abseil
 set(ABSL_PROPAGATE_CXX_STD ON)
 add_subdirectory(third_party/abseil-cpp)
+
+# Add toml11
+include(FetchContent)
+FetchContent_Declare(
+        toml11
+        GIT_REPOSITORY https://github.com/ToruNiina/toml11.git
+        GIT_TAG v4.4.0
+)
+FetchContent_MakeAvailable(toml11)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native -fomit-frame-pointer -flto -fno-stack-protector -ffast-math -funroll-loops -finline-functions -fpredictive-commoning -fgcse-after-reload -ftree-vectorize -ftree-partial-pre -fno-semantic-interposition -fno-trapping-math -falign-functions=64 -falign-loops=64 -fno-math-errno -fno-signed-zeros -fexceptions")
@@ -35,18 +45,30 @@ endif ()
 
 add_executable(BangServer
         main.cpp
-        src/bang.cpp
         src/simdjson.cpp
         src/url_processing.cpp
         src/http_handler.cpp
+        src/bang_manager.cpp
+        src/bang_provider.cpp
+        src/bang_format.cpp
+        src/bang_source.cpp
+        src/bang_provider_factory.cpp
+        src/server_config.cpp
+        src/config_utils.cpp
 )
 
 add_executable(BangBenchmark
         benchmark.cpp
-        src/bang.cpp
         src/simdjson.cpp
         src/url_processing.cpp
         src/http_handler.cpp
+        src/bang_manager.cpp
+        src/bang_provider.cpp
+        src/bang_format.cpp
+        src/bang_source.cpp
+        src/bang_provider_factory.cpp
+        src/server_config.cpp
+        src/config_utils.cpp
 )
 
 target_include_directories(BangServer PRIVATE ${LIBURING_INCLUDE_DIRS})
@@ -54,6 +76,7 @@ target_link_libraries(BangServer PRIVATE
         ${LIBURING_LIBRARIES}
         absl::flat_hash_map
         absl::strings
+        toml11::toml11
 )
 
 
@@ -63,6 +86,7 @@ target_link_libraries(BangBenchmark PRIVATE
         ${LIBURING_LIBRARIES}
         absl::flat_hash_map
         absl::strings
+        toml11::toml11
 )
 set_target_properties(BangBenchmark PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION TRUE
@@ -78,3 +102,6 @@ set_target_properties(BangServer PROPERTIES
 install(TARGETS BangServer
         RUNTIME DESTINATION bin
 )
+
+configure_file(bangs.example.json ${CMAKE_CURRENT_BINARY_DIR}/bangs.json COPYONLY)
+configure_file(bangserver.example.toml ${CMAKE_CURRENT_BINARY_DIR}/bangserver.toml COPYONLY)

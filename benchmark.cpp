@@ -17,7 +17,7 @@
 #include <arpa/inet.h>
 #include <sys/time.h>
 
-#include "include/bang.h"
+#include "include/bang_manager.h"
 #include "include/memory_pool.h"
 #include "include/url_processing.h"
 #include "include/http_handler.h"
@@ -399,12 +399,14 @@ void runInProcessBenchmark(const std::vector<std::string> &testUrls, int numThre
 }
 
 int main(const int argc, char *argv[]) {
-    std::cout << "Loading bang data from bang.json..." << std::endl;
-    if (!loadBangDataFromUrl("https://duckduckgo.com/bang.js")) {
-        std::cerr << "Failed to load bang data from API\n";
-        return 1;
-    }
-    std::cout << "Successfully loaded " << ALL_BANGS.size() << " bang URLs\n";
+    std::cout << "Initializing BangManager..." << std::endl;
+    ServerConfig config;
+    config.loadDefault();
+    BangManager bangManager(config);
+    bangManager.loadAllBangs();
+    
+    // Update the global ALL_BANGS reference with data from the BangManager
+    ALL_BANGS = bangManager.getAllBangs();
 
     // RNG
     std::random_device rd;
@@ -453,6 +455,4 @@ int main(const int argc, char *argv[]) {
     } else {
         runInProcessBenchmark(testUrls, threads);
     }
-
-    return 0;
 }
