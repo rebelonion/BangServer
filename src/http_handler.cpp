@@ -1,5 +1,6 @@
 #include "../include/http_handler.h"
 #include "../include/url_processing.h"
+#include "../include/server_config.h"
 #include <cstring>
 #include <netdb.h>
 #include <sys/socket.h>
@@ -28,14 +29,29 @@ const std::string_view HOME_PAGE_HTML = R"(<!DOCTYPE html>
 </body>
 </html>)";
 
-const std::string_view OPENSEARCH_XML = R"(<?xml version="1.0" encoding="UTF-8"?>
-<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
-  <ShortName>BangSearch</ShortName>
-  <Description>Fast bang search</Description>
-  <InputEncoding>UTF-8</InputEncoding>
-  <Url type="text/html" method="GET" template="http://localhost:3000/?q={searchTerms}"/>
-  <Url type="application/x-suggestions+json" method="GET" template="https://search.brave.com/api/suggest?q={searchTerms}"/>
-</OpenSearchDescription>)";
+std::string generateOpenSearchXml(const ServerConfig& config) {
+    std::string baseUrl;
+    if (const char* host = std::getenv("BANG_HOST")) {
+        baseUrl = std::string("http://") + host;
+    } else {
+        baseUrl = "http://localhost";
+    }
+    
+    baseUrl += ":" + std::to_string(config.port);
+    
+    return std::string("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                       "<OpenSearchDescription xmlns=\"http://a9.com/-/spec/opensearch/1.1/\">\n"
+                       "  <ShortName>BangSearch</ShortName>\n"
+                       "  <Description>Fast bang search</Description>\n"
+                       "  <InputEncoding>UTF-8</InputEncoding>\n"
+                       "  <Url type=\"text/html\" method=\"GET\" template=\"") + 
+                       baseUrl + "/?q={searchTerms}\"/>\n"
+                       "  <Url type=\"application/x-suggestions+json\" method=\"GET\" template=\"https://search.brave.com/api/suggest?q={searchTerms}\"/>\n"
+                       "</OpenSearchDescription>";
+}
+
+std::string OPENSEARCH_XML_CONTENT;
+const std::string_view OPENSEARCH_XML = OPENSEARCH_XML_CONTENT;
 
 std::string_view createHttpResponse(const HttpStatus status, const std::string_view contentType,
                                     const std::string_view body, char *buffer) {

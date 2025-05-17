@@ -15,12 +15,17 @@ constexpr std::string_view CONTENT_TYPE_XML = "application/opensearchdescription
 constexpr std::string_view CONTENT_TYPE_JSON = "application/json";
 
 extern const std::string_view HOME_PAGE_HTML;
+struct ServerConfig;
+
+std::string generateOpenSearchXml(const ServerConfig &config);
+
+extern std::string OPENSEARCH_XML_CONTENT;
 extern const std::string_view OPENSEARCH_XML;
 
-std::string_view createHttpResponse(HttpStatus status, std::string_view contentType, 
-                                   std::string_view body, char* buffer);
+std::string_view createHttpResponse(HttpStatus status, std::string_view contentType,
+                                    std::string_view body, char *buffer);
 
-std::string_view createRedirectResponse(std::string_view searchUrl, std::string_view encodedQuery, char* buffer);
+std::string_view createRedirectResponse(std::string_view searchUrl, std::string_view encodedQuery, char *buffer);
 
 std::string_view extractPath(std::string_view requestData);
 

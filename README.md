@@ -120,6 +120,7 @@ url_template = "https://customsearch.com/?q={{{s}}}"
 You can also set configuration with these environment variables:
 
 - `BANG_PORT` - Server port
+- `BANG_HOST` - Hostname for OpenSearch XML (defaults to localhost if not set)
 - `BANG_BACKLOG` - Connection backlog
 - `BANG_DEFAULT_SEARCH` - Default search URL
 - `BANG_THREADS` - Number of worker threads
@@ -128,7 +129,7 @@ You can also set configuration with these environment variables:
 Example:
 
 ```bash
-BANG_PORT=8080 BANG_DEFAULT_SEARCH="https://duckduckgo.com/?q=" ./cmake-build-release/bangserver
+BANG_PORT=8080 BANG_HOST="example.com" BANG_DEFAULT_SEARCH="https://duckduckgo.com/?q=" ./cmake-build-release/bangserver
 ```
 
 #### Docker Configuration
@@ -149,6 +150,7 @@ cp bangs.example.json config/bangs.json
 docker run -p 8080:8080 \
   -v $(pwd)/config:/etc/bangserver:ro \
   -e BANG_PORT=8080 \
+  -e BANG_HOST="example.com" \
   -e BANG_DEFAULT_SEARCH="https://duckduckgo.com/?q=" \
   bangserver
 ```
@@ -161,6 +163,7 @@ services:
     # ...
     environment:
       - BANG_PORT=8080
+      - BANG_HOST=example.com
       - BANG_DEFAULT_SEARCH=https://duckduckgo.com/?q=
     volumes:
       - ./config:/etc/bangserver:ro

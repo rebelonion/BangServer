@@ -228,6 +228,7 @@ int main() {
     }
 
     DEFAULT_SEARCH_URL = config.defaultSearchUrl;
+    OPENSEARCH_XML_CONTENT = generateOpenSearchXml(config);
 
     std::cout << "Initializing BangManager..." << std::endl;
     BangManager bangManager(config);
