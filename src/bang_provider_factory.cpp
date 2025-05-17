@@ -5,6 +5,7 @@
 #include "../include/config_utils.h"
 #include <iostream>
 #include <fstream>
+#include <format>
 
 std::vector<std::unique_ptr<BangProvider>> BangProviderFactory::createProvidersFromConfig(const std::vector<ProviderConfig> &providerConfigs) {
     std::vector<std::unique_ptr<BangProvider>> providers;

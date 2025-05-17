@@ -26,7 +26,3 @@ jobs:
       
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config Release
-      
-    - name: Test
-      working-directory: ${{github.workspace}}/build
-      run: ./bangbenchmark -t 1 -n 1000

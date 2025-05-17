@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim AS builder
+FROM ubuntu:24.04 AS builder
 
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -6,16 +6,21 @@ RUN apt-get update && apt-get install -y \
     git \
     liburing-dev \
     pkg-config \
+    g++-13 \
     && rm -rf /var/lib/apt/lists/*
+
+# Use GCC 13 which has full C++23 support
+ENV CC=gcc-13
+ENV CXX=g++-13
 
 WORKDIR /app
 
 COPY . .
 
-RUN cmake -B cmake-build-release -DCMAKE_BUILD_TYPE=Release \
+RUN cmake -B cmake-build-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=23 \
     && cmake --build cmake-build-release --parallel
 
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y \
     liburing2 \
