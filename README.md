@@ -2,14 +2,21 @@
 
 A high-performance C++ server for DuckDuckGo bang command processing.
 
-[![Docker Build and Publish](https://github.com/rebelonion/BangServer/actions/workflows/docker-build.yml/badge.svg)](https://github.com/YOUR_USERNAME/BangServer/actions/workflows/docker-build.yml)
-[![Release](https://github.com/rebelonion/BangServer/actions/workflows/release.yml/badge.svg)](https://github.com/YOUR_USERNAME/BangServer/actions/workflows/release.yml)
+[![Docker Build and Publish](https://github.com/rebelonion/BangServer/actions/workflows/docker-build.yml/badge.svg)](https://github.com/rebelonion/BangServer/actions/workflows/docker-build.yml)
+[![Release](https://github.com/rebelonion/BangServer/actions/workflows/release.yml/badge.svg)](https://github.com/rebelonion/BangServer/actions/workflows/release.yml)
+
+## Quick Links
+- [Performance](#performance)
+- [Docker Usage](#docker-usage)
+- [Configuration](#configuration)
+- [Custom Bangs](#custom-bangs)
+- [Native Installation](#native-installation)
+- [Technical Details](#technical-details)
 
 ## Overview
 
 BangServer is an ultra-fast, multi-threaded C++ application designed to process DuckDuckGo bang commands with minimal
-latency.
-This project aims to provide the fastest possible lookup and redirection for bang commands.
+latency. This project aims to provide the fastest possible lookup and redirection for bang commands.
 
 ## Performance
 
@@ -22,50 +29,46 @@ Benchmarks:
 | Intel i9-12900KF | 8       | 42,907,400     | 0.0233              |
 | Intel i9-12900KF | 1       | 8,148,490      | 0.1227              |
 
-## Running
+## Docker Usage
 
-### Docker
+The simplest way to run BangServer is using Docker:
 
 ```bash
 # Run with default configuration
-docker run -p 8080:8080 ghcr.io/rebelonion/bangserver:latest
+docker run -p 8080:8080 --security-opt seccomp=$(pwd)/io_uring_seccomp.json ghcr.io/rebelonion/bangserver:latest
 
-# Run with custom configuration
-docker run -p 8080:8080 -v $(pwd)/config:/etc/bangserver:ro ghcr.io/rebelonion/bangserver:latest
+# Run with proper hostname for OpenSearch support
+docker run -p 8080:8080 --security-opt seccomp=$(pwd)/io_uring_seccomp.json -e BANG_HOST="your-server-hostname.com" ghcr.io/rebelonion/bangserver:latest
+
+# Using with custom configuration
+docker run -p 8080:8080 \
+  -v $(pwd)/config:/etc/bangserver:ro \
+  -e BANG_HOST="your-server-hostname.com" \
+  --security-opt seccomp=$(pwd)/io_uring_seccomp.json \
+  ghcr.io/rebelonion/bangserver:latest
 ```
 
-### Native
+> **Note**: When running in Docker, you'll need to use the io_uring_seccomp.json profile or seccomp=unconfined to enable io_uring functionality.
 
-```bash
-# Run the server
-./cmake-build-debug/bangserver
+### Docker Compose
 
-# Run benchmarks
-./cmake-build-release/bangbenchmark -t <threads>
+For a more complete setup with Docker Compose:
 
-# More options can be found with --help
-```
-
-## Building
-
-### Native Build
-
-```bash
-# Debug build
-cmake -B cmake-build-debug && cmake --build cmake-build-debug
-
-# Release build (recommended for performance)
-cmake -B cmake-build-release -DCMAKE_BUILD_TYPE=Release && cmake --build cmake-build-release
-```
-
-### Docker Build
-
-```bash
-# Build the Docker image
-docker build -t bangserver .
-
-# Or using Docker Compose
-docker-compose build
+```yaml
+services:
+  bangserver:
+    image: ghcr.io/rebelonion/bangserver:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - BANG_PORT=8080
+      - BANG_HOST=your-server-hostname.com
+      - BANG_DEFAULT_SEARCH=https://duckduckgo.com/?q=
+    volumes:
+      - ./config:/etc/bangserver:ro
+      - ./io_uring_seccomp.json:/etc/seccomp/io_uring_seccomp.json:ro
+    security_opt:
+      - seccomp:/etc/seccomp/io_uring_seccomp.json
 ```
 
 ## Configuration
@@ -129,10 +132,10 @@ You can also set configuration with these environment variables:
 Example:
 
 ```bash
-BANG_PORT=8080 BANG_HOST="example.com" BANG_DEFAULT_SEARCH="https://duckduckgo.com/?q=" ./cmake-build-release/bangserver
+BANG_PORT=8080 BANG_HOST="example.com" BANG_DEFAULT_SEARCH="https://duckduckgo.com/?q=" ./bangserver
 ```
 
-#### Docker Configuration
+### Docker Configuration
 
 When using Docker, you can configure the server in several ways:
 
@@ -152,41 +155,11 @@ docker run -p 8080:8080 \
   -e BANG_PORT=8080 \
   -e BANG_HOST="example.com" \
   -e BANG_DEFAULT_SEARCH="https://duckduckgo.com/?q=" \
-  bangserver
+  --security-opt seccomp=$(pwd)/io_uring_seccomp.json \
+  ghcr.io/rebelonion/bangserver:latest
 ```
 
-3. With Docker Compose (edit docker-compose.yml):
-
-```yaml
-services:
-  bangserver:
-    # ...
-    environment:
-      - BANG_PORT=8080
-      - BANG_HOST=example.com
-      - BANG_DEFAULT_SEARCH=https://duckduckgo.com/?q=
-    volumes:
-      - ./config:/etc/bangserver:ro
-```
-
-### Configuration Locations
-
-The application searches for configuration files in the following locations (in order of priority):
-
-1. Path specified by the `BANG_CONFIG_FILE` environment variable
-2. Current directory
-3. Platform-specific user config directories:
-    - **Linux**: `~/.config/bangserver/`
-    - **Windows**: `%APPDATA%\BangServer\` and `%LOCALAPPDATA%\BangServer\`
-    - **macOS**: `~/Library/Application Support/BangServer/` and `~/.config/bangserver/`
-4. System-wide (Linux only): `/etc/bangserver/`
-
-If no configuration file is found or no providers are configured, the application falls back to:
-
-1. Always load from DuckDuckGo API
-2. Check for `BANG_CONFIG_FILE` environment variable
-
-### Custom Bangs
+## Custom Bangs
 
 You can add custom bangs or override existing ones in either JSON or TOML format.
 
@@ -243,6 +216,30 @@ Use `{{{s}}}` as placeholder for the search query in either format.
 - `r`/`relevance`: Relevance ranking
 
 If a custom bang has the same trigger as an existing bang, it will override the original.
+
+## Native Installation
+
+### Building from Source
+
+```bash
+# Debug build
+cmake -B cmake-build-debug && cmake --build cmake-build-debug
+
+# Release build (recommended for performance)
+cmake -B cmake-build-release -DCMAKE_BUILD_TYPE=Release && cmake --build cmake-build-release
+```
+
+### Running Natively
+
+```bash
+# Run the server
+./cmake-build-release/bangserver
+
+# Run benchmarks
+./cmake-build-release/bangbenchmark -t <threads>
+
+# More options can be found with --help
+```
 
 ## Technical Details
 
