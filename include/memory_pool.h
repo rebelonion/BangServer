@@ -12,9 +12,8 @@ public:
         m_blocks.reserve(initialCapacity);
         m_indexLookup.reserve(initialCapacity);
         for (size_t i = 0; i < initialCapacity; ++i) {
-            auto *block = new char[bufferSize];
-            m_blocks.push_back(block);
-            m_indexLookup[block] = i;
+            m_blocks.push_back(new char[bufferSize]);
+            m_indexLookup[m_blocks.back()] = i;
             m_freeList.push_back(i);
         }
     }
@@ -35,9 +34,8 @@ public:
             m_freeList.reserve(newBlocks);
 
             for (size_t i = 0; i < newBlocks; ++i) {
-                auto *block = new char[m_bufferSize];
-                m_blocks.push_back(block);
-                m_indexLookup[block] = oldSize + i;
+                m_blocks.push_back(new char[m_bufferSize]);
+                m_indexLookup[m_blocks.back()] = oldSize + i;
                 m_freeList.push_back(oldSize + i);
             }
 
