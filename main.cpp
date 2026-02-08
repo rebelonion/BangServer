@@ -37,10 +37,10 @@ struct RequestContext {
     int clientFd;
     ConnectionState state;
 
-    char *requestBuffer;
-    char *decodeBuffer;
-    char *encodeBuffer;
-    char *responseBuffer;
+    PoolBuffer requestBuffer;
+    PoolBuffer decodeBuffer;
+    PoolBuffer encodeBuffer;
+    PoolBuffer responseBuffer;
 
     size_t bytesRead;
     size_t responseLen;
@@ -48,101 +48,82 @@ struct RequestContext {
     RequestContext()
         : clientFd(-1),
           state(ConnectionState::ACCEPT),
-          requestBuffer(getRequestPool().acquire()),
-          decodeBuffer(getRequestPool().acquire()),
-          encodeBuffer(getEncodePool().acquire()),
-          responseBuffer(getRedirectPool().acquire()),
+          requestBuffer(getRequestPool()),
+          decodeBuffer(getRequestPool()),
+          encodeBuffer(getEncodePool()),
+          responseBuffer(getRedirectPool()),
           bytesRead(0),
           responseLen(0) {
     }
 
     ~RequestContext() {
-        if (requestBuffer) getRequestPool().release(requestBuffer);
-        if (decodeBuffer) getRequestPool().release(decodeBuffer);
-        if (encodeBuffer) getEncodePool().release(encodeBuffer);
-        if (responseBuffer) getRedirectPool().release(responseBuffer);
         if (clientFd >= 0) close(clientFd);
     }
 
-    // Allow moving but not copying
     RequestContext(const RequestContext &) = delete;
-
     RequestContext &operator=(const RequestContext &) = delete;
 
     RequestContext(RequestContext &&other) noexcept
         : clientFd(other.clientFd),
           state(other.state),
-          requestBuffer(other.requestBuffer),
-          decodeBuffer(other.decodeBuffer),
-          encodeBuffer(other.encodeBuffer),
-          responseBuffer(other.responseBuffer),
+          requestBuffer(std::move(other.requestBuffer)),
+          decodeBuffer(std::move(other.decodeBuffer)),
+          encodeBuffer(std::move(other.encodeBuffer)),
+          responseBuffer(std::move(other.responseBuffer)),
           bytesRead(other.bytesRead),
           responseLen(other.responseLen) {
         other.clientFd = -1;
-        other.requestBuffer = nullptr;
-        other.decodeBuffer = nullptr;
-        other.encodeBuffer = nullptr;
-        other.responseBuffer = nullptr;
     }
 
     RequestContext &operator=(RequestContext &&other) noexcept {
         if (this != &other) {
-            if (requestBuffer) getRequestPool().release(requestBuffer);
-            if (decodeBuffer) getRequestPool().release(decodeBuffer);
-            if (encodeBuffer) getEncodePool().release(encodeBuffer);
-            if (responseBuffer) getRedirectPool().release(responseBuffer);
             if (clientFd >= 0) close(clientFd);
 
             clientFd = other.clientFd;
             state = other.state;
-            requestBuffer = other.requestBuffer;
-            decodeBuffer = other.decodeBuffer;
-            encodeBuffer = other.encodeBuffer;
-            responseBuffer = other.responseBuffer;
+            requestBuffer = std::move(other.requestBuffer);
+            decodeBuffer = std::move(other.decodeBuffer);
+            encodeBuffer = std::move(other.encodeBuffer);
+            responseBuffer = std::move(other.responseBuffer);
             bytesRead = other.bytesRead;
             responseLen = other.responseLen;
 
-            // Reset other
             other.clientFd = -1;
-            other.requestBuffer = nullptr;
-            other.decodeBuffer = nullptr;
-            other.encodeBuffer = nullptr;
-            other.responseBuffer = nullptr;
         }
         return *this;
     }
 };
 
 void processRequest(RequestContext *ctx) {
-    const char *requestStart = ctx->requestBuffer;
-    const char *requestEnd = ctx->requestBuffer + ctx->bytesRead;
+    const char *requestStart = ctx->requestBuffer.get();
+    const char *requestEnd = ctx->requestBuffer.get() + ctx->bytesRead;
 
     const std::string_view requestStr(requestStart, ctx->bytesRead);
 
     if (const std::string_view path = extractPath(requestStr); path == "/") {
         if (requestStr.find("?q=") != std::string_view::npos) {
             const std::string_view url(requestStart, requestEnd - requestStart);
-            auto [searchUrl, encodedQuery] = processQuery(url, ctx->decodeBuffer, ctx->encodeBuffer);
+            auto [searchUrl, encodedQuery] = processQuery(url, ctx->decodeBuffer.get(), ctx->encodeBuffer.get());
             if (searchUrl.empty() && encodedQuery.empty()) {
                 ctx->responseLen = createHttpResponse(HttpStatus::REQUEST_TOO_LARGE, CONTENT_TYPE_HTML, "",
-                                                      ctx->responseBuffer).size();
+                                                      ctx->responseBuffer.get()).size();
                 return;
             }
-            ctx->responseLen = createRedirectResponse(searchUrl, encodedQuery, ctx->responseBuffer).size();
+            ctx->responseLen = createRedirectResponse(searchUrl, encodedQuery, ctx->responseBuffer.get()).size();
             return;
         }
         // Serve home page
-        ctx->responseLen = createHttpResponse(HttpStatus::OK, CONTENT_TYPE_HTML, HOME_PAGE_HTML, ctx->responseBuffer).
+        ctx->responseLen = createHttpResponse(HttpStatus::OK, CONTENT_TYPE_HTML, HOME_PAGE_HTML, ctx->responseBuffer.get()).
                 size();
     } else if (path == "/opensearch.xml") {
         // Serve OpenSearch XML
-        ctx->responseLen = createHttpResponse(HttpStatus::OK, CONTENT_TYPE_XML, OPENSEARCH_XML_CONTENT, ctx->responseBuffer).
+        ctx->responseLen = createHttpResponse(HttpStatus::OK, CONTENT_TYPE_XML, OPENSEARCH_XML_CONTENT, ctx->responseBuffer.get()).
                 size();
     } else {
         // For any other path, process as potential search query
         const std::string_view url(requestStart, requestEnd - requestStart);
-        auto [searchUrl, encodedQuery] = processQuery(url, ctx->decodeBuffer, ctx->encodeBuffer);
-        ctx->responseLen = createRedirectResponse(searchUrl, encodedQuery, ctx->responseBuffer).size();
+        auto [searchUrl, encodedQuery] = processQuery(url, ctx->decodeBuffer.get(), ctx->encodeBuffer.get());
+        ctx->responseLen = createRedirectResponse(searchUrl, encodedQuery, ctx->responseBuffer.get()).size();
     }
 }
 
@@ -201,13 +182,13 @@ void addAcceptRequest(io_uring *ring, const int serverFd, sockaddr_in *clientAdd
 
 void addReadRequest(io_uring *ring, RequestContext *ctx, size_t bufferSize) {
     io_uring_sqe *sqe = io_uring_get_sqe(ring);
-    io_uring_prep_recv(sqe, ctx->clientFd, ctx->requestBuffer, bufferSize - 1, 0);
+    io_uring_prep_recv(sqe, ctx->clientFd, ctx->requestBuffer.get(), bufferSize - 1, 0);
     io_uring_sqe_set_data(sqe, ctx);
 }
 
 void addWriteRequest(io_uring *ring, RequestContext *ctx) {
     io_uring_sqe *sqe = io_uring_get_sqe(ring);
-    io_uring_prep_send(sqe, ctx->clientFd, ctx->responseBuffer, ctx->responseLen, 0);
+    io_uring_prep_send(sqe, ctx->clientFd, ctx->responseBuffer.get(), ctx->responseLen, 0);
     io_uring_sqe_set_data(sqe, ctx);
 }
 
@@ -302,7 +283,7 @@ int main() {
                 addCloseRequest(&ring, ctx);
             } else {
                 ctx->bytesRead = res;
-                ctx->requestBuffer[ctx->bytesRead] = '\0';
+                ctx->requestBuffer.get()[ctx->bytesRead] = '\0';
                 ctx->state = ConnectionState::PROCESS;
 
                 processRequest(ctx);
