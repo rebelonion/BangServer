@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <vector>
 #include <mutex>
-#include <unordered_map>
+#include <absl/container/flat_hash_map.h>
 
 class alignas(64) MemoryPool {
 public:
@@ -61,7 +61,7 @@ public:
 private:
     std::mutex m_mutex;
     std::vector<char *> m_blocks;
-    std::unordered_map<const char *, size_t> m_indexLookup;
+    absl::flat_hash_map<const char *, size_t> m_indexLookup;
     std::vector<size_t> m_freeList;
     size_t m_bufferSize;
     size_t m_capacity;

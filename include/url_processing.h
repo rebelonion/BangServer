@@ -169,12 +169,12 @@ struct alignas(64) SafeChars {
 };
 
 inline const HexTables &getHexTables() {
-    static thread_local constexpr HexTables hexTables{};
+    static constexpr HexTables hexTables{};
     return hexTables;
 }
 
 inline const SafeChars &getSafeChars() {
-    static thread_local constexpr SafeChars safeChars{};
+    static constexpr SafeChars safeChars{};
     return safeChars;
 }
 
