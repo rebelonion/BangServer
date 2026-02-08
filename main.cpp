@@ -73,7 +73,8 @@ struct RequestContext {
           encodeBuffer(std::move(other.encodeBuffer)),
           responseBuffer(std::move(other.responseBuffer)),
           bytesRead(other.bytesRead),
-          responseLen(other.responseLen) {
+          responseLen(other.responseLen),
+          poolIndex(other.poolIndex) {
         other.clientFd = -1;
     }
 
@@ -175,29 +176,46 @@ int setupServerSocket(const ServerConfig &config) {
     return serverSocket;
 }
 
-void addAcceptRequest(io_uring *ring, const int serverFd, sockaddr_in *clientAddr, socklen_t *clientAddrLen,
-                      RequestContext *ctx) {
+io_uring_sqe *getSqe(io_uring *ring) {
     io_uring_sqe *sqe = io_uring_get_sqe(ring);
+    if (!sqe) {
+        io_uring_submit(ring);
+        sqe = io_uring_get_sqe(ring);
+    }
+    return sqe;
+}
+
+bool addAcceptRequest(io_uring *ring, const int serverFd, sockaddr_in *clientAddr, socklen_t *clientAddrLen,
+                      RequestContext *ctx) {
+    io_uring_sqe *sqe = getSqe(ring);
+    if (!sqe) return false;
     io_uring_prep_accept(sqe, serverFd, reinterpret_cast<sockaddr *>(clientAddr), clientAddrLen, 0);
     io_uring_sqe_set_data(sqe, ctx);
+    return true;
 }
 
-void addReadRequest(io_uring *ring, RequestContext *ctx, size_t bufferSize) {
-    io_uring_sqe *sqe = io_uring_get_sqe(ring);
+bool addReadRequest(io_uring *ring, RequestContext *ctx, size_t bufferSize) {
+    io_uring_sqe *sqe = getSqe(ring);
+    if (!sqe) return false;
     io_uring_prep_recv(sqe, ctx->clientFd, ctx->requestBuffer.get(), bufferSize - 1, 0);
     io_uring_sqe_set_data(sqe, ctx);
+    return true;
 }
 
-void addWriteRequest(io_uring *ring, RequestContext *ctx) {
-    io_uring_sqe *sqe = io_uring_get_sqe(ring);
+bool addWriteRequest(io_uring *ring, RequestContext *ctx) {
+    io_uring_sqe *sqe = getSqe(ring);
+    if (!sqe) return false;
     io_uring_prep_send(sqe, ctx->clientFd, ctx->responseBuffer.get(), ctx->responseLen, 0);
     io_uring_sqe_set_data(sqe, ctx);
+    return true;
 }
 
-void addCloseRequest(io_uring *ring, RequestContext *ctx) {
-    io_uring_sqe *sqe = io_uring_get_sqe(ring);
+bool addCloseRequest(io_uring *ring, RequestContext *ctx) {
+    io_uring_sqe *sqe = getSqe(ring);
+    if (!sqe) return false;
     io_uring_prep_nop(sqe);
     io_uring_sqe_set_data(sqe, ctx);
+    return true;
 }
 
 int main() {
@@ -311,8 +329,4 @@ int main() {
 
         io_uring_submit(&ring);
     }
-
-    //io_uring_queue_exit(&ring);
-    //close(serverFd);
-    //return 0;
 }
