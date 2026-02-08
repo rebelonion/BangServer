@@ -223,12 +223,6 @@ std::string makeHttpRequest(const std::string &url, const std::string &acceptTyp
         return "";
     }
     
-    const int socFd = socket(AF_INET, SOCK_STREAM, 0);
-    if (socFd < 0) {
-        std::cerr << "Error creating socket\n";
-        return "";
-    }
-
     std::string hostname;
     std::string path;
 
@@ -249,32 +243,38 @@ std::string makeHttpRequest(const std::string &url, const std::string &acceptTyp
 
     if (hostname.length() > 253) {
         std::cerr << "Error: Hostname exceeds maximum allowed length\n";
-        close(socFd);
         return "";
     }
-    
+
     if (path.length() > 2048) {
         std::cerr << "Error: Path exceeds maximum allowed length\n";
-        close(socFd);
         return "";
     }
 
-    const hostent *server = gethostbyname(hostname.c_str());
-    if (server == nullptr) {
-        std::cerr << "Error: Could not resolve hostname " << hostname << std::endl;
-        close(socFd);
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    addrinfo *result = nullptr;
+    if (const int err = getaddrinfo(hostname.c_str(), "80", &hints, &result); err != 0) {
+        std::cerr << "Error: Could not resolve hostname " << hostname << ": " << gai_strerror(err) << std::endl;
         return "";
     }
 
-    sockaddr_in serverAddr{};
-    std::memset(&serverAddr, 0, sizeof(serverAddr));
-    serverAddr.sin_family = AF_INET;
-    std::memcpy(&serverAddr.sin_addr.s_addr, server->h_addr, server->h_length);
-    serverAddr.sin_port = htons(80);
+    int socFd = -1;
+    for (const addrinfo *rp = result; rp != nullptr; rp = rp->ai_next) {
+        socFd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (socFd < 0) continue;
 
-    if (connect(socFd, reinterpret_cast<sockaddr *>(&serverAddr), sizeof(serverAddr)) < 0) {
-        std::cerr << "Error connecting to server\n";
+        if (connect(socFd, rp->ai_addr, rp->ai_addrlen) == 0) break;
+
         close(socFd);
+        socFd = -1;
+    }
+    freeaddrinfo(result);
+
+    if (socFd < 0) {
+        std::cerr << "Error connecting to server " << hostname << std::endl;
         return "";
     }
 
