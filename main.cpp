@@ -44,6 +44,7 @@ struct RequestContext {
 
     size_t bytesRead;
     size_t responseLen;
+    size_t poolIndex;
 
     RequestContext()
         : clientFd(-1),
@@ -53,7 +54,8 @@ struct RequestContext {
           encodeBuffer(getEncodePool()),
           responseBuffer(getRedirectPool()),
           bytesRead(0),
-          responseLen(0) {
+          responseLen(0),
+          poolIndex(0) {
     }
 
     ~RequestContext() {
@@ -239,6 +241,7 @@ int main() {
     std::vector<std::unique_ptr<RequestContext> > contexts;
 
     auto initialCtx = std::make_unique<RequestContext>();
+    initialCtx->poolIndex = contexts.size();
     addAcceptRequest(&ring, serverFd, &clientAddr, &clientAddrLen, initialCtx.get());
     contexts.push_back(std::move(initialCtx));
 
@@ -265,6 +268,7 @@ int main() {
             if (res < 0) {
                 // Accept failed, submit a new accept
                 auto newCtx = std::make_unique<RequestContext>();
+                newCtx->poolIndex = contexts.size();
                 addAcceptRequest(&ring, serverFd, &clientAddr, &clientAddrLen, newCtx.get());
                 contexts.push_back(std::move(newCtx));
             } else {
@@ -274,6 +278,7 @@ int main() {
                 addReadRequest(&ring, ctx, config.requestBufferSize);
 
                 auto newCtx = std::make_unique<RequestContext>();
+                newCtx->poolIndex = contexts.size();
                 addAcceptRequest(&ring, serverFd, &clientAddr, &clientAddrLen, newCtx.get());
                 contexts.push_back(std::move(newCtx));
             }
@@ -295,11 +300,12 @@ int main() {
             ctx->state = ConnectionState::CLOSE;
             addCloseRequest(&ring, ctx);
         } else if (ctx->state == ConnectionState::CLOSE) {
-            for (auto it = contexts.begin(); it != contexts.end(); ++it) {
-                if (it->get() == ctx) {
-                    contexts.erase(it);
-                    break;
+            if (const size_t idx = ctx->poolIndex; idx < contexts.size()) {
+                if (idx != contexts.size() - 1) {
+                    contexts.back()->poolIndex = idx;
+                    std::swap(contexts[idx], contexts.back());
                 }
+                contexts.pop_back();
             }
         }
 

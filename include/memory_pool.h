@@ -3,14 +3,18 @@
 #include <cstddef>
 #include <vector>
 #include <mutex>
+#include <unordered_map>
 
 class alignas(64) MemoryPool {
 public:
     explicit MemoryPool(const size_t bufferSize, const size_t initialCapacity = 64)
         : m_bufferSize(bufferSize), m_capacity(initialCapacity) {
         m_blocks.reserve(initialCapacity);
+        m_indexLookup.reserve(initialCapacity);
         for (size_t i = 0; i < initialCapacity; ++i) {
-            m_blocks.push_back(new char[bufferSize]);
+            auto *block = new char[bufferSize];
+            m_blocks.push_back(block);
+            m_indexLookup[block] = i;
             m_freeList.push_back(i);
         }
     }
@@ -31,7 +35,9 @@ public:
             m_freeList.reserve(newBlocks);
 
             for (size_t i = 0; i < newBlocks; ++i) {
-                m_blocks.push_back(new char[m_bufferSize]);
+                auto *block = new char[m_bufferSize];
+                m_blocks.push_back(block);
+                m_indexLookup[block] = oldSize + i;
                 m_freeList.push_back(oldSize + i);
             }
 
@@ -47,11 +53,8 @@ public:
         if (!buffer) return;
 
         std::lock_guard lock(m_mutex);
-        for (size_t i = 0; i < m_blocks.size(); ++i) {
-            if (m_blocks[i] == buffer) {
-                m_freeList.push_back(i);
-                return;
-            }
+        if (const auto it = m_indexLookup.find(buffer); it != m_indexLookup.end()) {
+            m_freeList.push_back(it->second);
         }
     }
 
@@ -60,6 +63,7 @@ public:
 private:
     std::mutex m_mutex;
     std::vector<char *> m_blocks;
+    std::unordered_map<const char *, size_t> m_indexLookup;
     std::vector<size_t> m_freeList;
     size_t m_bufferSize;
     size_t m_capacity;
