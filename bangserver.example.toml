@@ -11,6 +11,7 @@ num_threads = 8               # Optional: number of threads to use (auto if not 
 # Search settings
 [search]
 default_url = "https://www.google.com/search?q="   # Default search engine URL
+suggestions_url = "https://search.brave.com/api/suggest?q={searchTerms}"   # OpenSearch suggestions URL
 
 # Bang providers configuration
 [[providers]]

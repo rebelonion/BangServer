@@ -29,6 +29,7 @@ public:
 
     // Default search settings
     std::string defaultSearchUrl = "https://www.google.com/search?q=";
+    std::string suggestionsUrl = "https://search.brave.com/api/suggest?q={searchTerms}";
 
     // Performance settings
     std::optional<int> numThreads;

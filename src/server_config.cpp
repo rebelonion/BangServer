@@ -35,8 +35,12 @@ void ServerConfig::loadFromFile(const std::string &configPath) {
         }
 
         if (data.contains("search")) {
-            if (const auto &search = toml::get<toml::table>(data.at("search")); search.contains("default_url")) {
+            const auto &search = toml::get<toml::table>(data.at("search"));
+            if (search.contains("default_url")) {
                 defaultSearchUrl = toml::get<std::string>(search.at("default_url"));
+            }
+            if (search.contains("suggestions_url")) {
+                suggestionsUrl = toml::get<std::string>(search.at("suggestions_url"));
             }
         }
 

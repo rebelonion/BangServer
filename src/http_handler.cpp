@@ -46,7 +46,8 @@ std::string generateOpenSearchXml(const ServerConfig& config) {
                        "  <InputEncoding>UTF-8</InputEncoding>\n"
                        "  <Url type=\"text/html\" method=\"GET\" template=\"") + 
                        baseUrl + "/?q={searchTerms}\"/>\n"
-                       "  <Url type=\"application/x-suggestions+json\" method=\"GET\" template=\"https://search.brave.com/api/suggest?q={searchTerms}\"/>\n"
+                       "  <Url type=\"application/x-suggestions+json\" method=\"GET\" template=\"" +
+                       config.suggestionsUrl + "\"/>\n"
                        "</OpenSearchDescription>";
 }
 
